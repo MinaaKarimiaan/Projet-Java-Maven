@@ -78,6 +78,16 @@ public class HistoriqueRepository {
         }
     }
 
+    public List<MessageRecord> recupererHistorique(int userIdA, Integer userIdB, Integer groupeId, int limit, int offset)
+            throws SQLException {
+        if (groupeId != null && groupeId != 0) {
+            return recupererHistoriqueGroupe(groupeId, limit, offset);
+        } else if (userIdB != null && userIdB != 0) {
+            return recupererHistoriqueConversation(userIdA, userIdB, limit, offset);
+        }
+        return new ArrayList<>();
+    }
+
     private List<MessageRecord> mapMessages(ResultSet rs) throws SQLException {
         List<MessageRecord> messages = new ArrayList<>();
         while (rs.next()) {
