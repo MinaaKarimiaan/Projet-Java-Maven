@@ -14,10 +14,15 @@ package fr.uga.miashs.dciss.chatservice.client;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import fr.uga.miashs.dciss.chatservice.common.Packet;
+import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
+import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
+
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
@@ -37,6 +42,8 @@ public class ClientMsg {
 	private DataInputStream dis;
 
 	private int identifier;
+	private ClientDatabase database;
+	private HistoriqueRepository historiqueRepository;
 
 	private List<MessageListener> mListeners;
 	private List<ConnectionListener> cListeners;
@@ -121,6 +128,7 @@ public class ClientMsg {
 				if (identifier == 0) {
 					identifier = dis.readInt();
 				}
+				initializeDatabase();
 				// start the receive loop
 				new Thread(() -> receiveLoop()).start();
 				notifyConnectionListeners(true);
@@ -128,7 +136,18 @@ public class ClientMsg {
 				e.printStackTrace();
 				// error, close session
 				closeSession();
+			} catch (SQLException e) {
+				e.printStackTrace();
+				closeSession();
 			}
+		}
+	}
+
+	private void initializeDatabase() throws SQLException {
+		if (database == null) {
+			database = new ClientDatabase("target/client-history-" + identifier);
+			database.initSchema();
+			historiqueRepository = new HistoriqueRepository(database);
 		}
 	}
 
@@ -145,12 +164,41 @@ public class ClientMsg {
 				dos.writeInt(data.length);
 				dos.write(data);
 				dos.flush();
+			} 
+			persistPacket(identifier, destId, data, "OUT");
+			} catch (IOException e) {
+			    System.err.println("Connexion perdue avec le serveur");
+			    closeSession();
 			}
-		} catch (IOException e) {
-			// error, connection closed
-			closeSession();
 		}
-		
+	
+	public void deleteGroup(int groupId) {
+	    try {
+	        // Création d’un flux en mémoire pour construire le message binaire
+	        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+	        // Permet d’écrire facilement des types primitifs (byte, int, etc.)
+	        DataOutputStream dos = new DataOutputStream(bos);
+
+	        // On écrit le type de commande :
+	        // 2 = DELETE_GROUP (convention définie dans le protocole)
+	        dos.writeByte(5);
+
+	        // On écrit l’identifiant du groupe à supprimer
+	        dos.writeInt(groupId);
+
+	        // On force l’écriture dans le buffer mémoire
+	        dos.flush();
+
+	        // On envoie le packet au serveur :
+	        // destId = 0 → serveur
+	        // data = contenu binaire (type + groupId)
+	        sendPacket(0, bos.toByteArray());
+
+	    } catch (IOException e) {
+	        // En cas d’erreur réseau ou d’écriture
+	        e.printStackTrace();
+	    }
 	}
 
 	/**
@@ -165,6 +213,7 @@ public class ClientMsg {
 				int length = dis.readInt();
 				byte[] data = new byte[length];
 				dis.readFully(data);
+				persistPacket(sender, dest, data, "IN");
 				notifyMessageListeners(new Packet(sender, dest, data));
 
 			}
@@ -181,8 +230,98 @@ public class ClientMsg {
 		} catch (IOException e) {
 		}
 		s = null;
+		if (database != null) {
+			database.close();
+			database = null;
+			historiqueRepository = null;
+		}
 		notifyConnectionListeners(false);
 	}
+
+	private void persistPacket(int srcId, int destId, byte[] data, String direction) {
+		if (historiqueRepository == null || isTechnicalPacket(destId, data)) {
+			return;
+		}
+		try {
+			historiqueRepository.sauvegarderMessage(srcId, destId, data, direction);
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private boolean isTechnicalPacket(int destId, byte[] data) {
+		return destId == 0; // tous les paquets vers le serveur sont techniques
+	}
+	//envoie des paquet de gestion pour le groupe
+	
+	public void sendAddMember(int groupId, int userId) {
+		
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    // creation d'un tableau ou liste pour ranger mes bytes
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(3);      // type du paquet = 3 (ajout membre)
+	        dos.writeInt(userId);  // l'utilisateur à ajouter
+	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
+	        
+	        sendPacket(0, data); // groupId est négatif
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	public void sendRemoveMember(int groupId, int userId) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(4);       // type du paquet = 4 (suppression membre)
+	        dos.writeInt(groupId);  // ID du groupe (négatif)
+	        dos.writeInt(userId);   // ID du user à supprimer
+	        byte[] data = baos.toByteArray();
+	        
+	        sendPacket(0, data); // 0 paquet destinatiner au serveur
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	public void sendRemoveGroup(int groupId) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(5);       // type = 5 (suppression groupe)
+	        dos.writeInt(groupId);  // ID du groupe (négatif)
+	        byte[] data = baos.toByteArray();
+	        
+	        sendPacket(0, data); // destination = serveur
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	
+	
+	//-----------------------------------------------
+	//Envoi fichier
+	
+	public void sendFile(int destId, File file) throws IOException {
+	    byte[] fileBytes = Files.readAllBytes(file.toPath());
+	    byte[] nameBytes = file.getName().getBytes(StandardCharsets.UTF_8);
+
+	    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+	    DataOutputStream localDos = new DataOutputStream(bos);
+
+	    dos.writeByte(7);                    // type FILE_MSG
+	    dos.writeInt(nameBytes.length);      // taille du nom
+	    dos.write(nameBytes);                // nom du fichier
+	    dos.writeInt(fileBytes.length);      // taille du fichier
+	    dos.write(fileBytes);                // contenu brut
+
+	    dos.flush();
+	    sendPacket(destId, bos.toByteArray());
+	}
+	
+	//-----------------------------------------------------
 
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		ClientMsg c = new ClientMsg("localhost", 1666);
@@ -234,6 +373,7 @@ public class ClientMsg {
 			}
 
 		}
+		sc.close();
 
 		/*
 		 * int id =1+(c.getIdentifier()-1) % 2; System.out.println("send to "+id);
