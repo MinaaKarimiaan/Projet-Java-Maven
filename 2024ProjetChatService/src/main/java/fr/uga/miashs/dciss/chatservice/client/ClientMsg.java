@@ -21,6 +21,9 @@ import fr.uga.miashs.dciss.chatservice.common.Packet;
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
 
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
  * establish the connection. Then messages can be send by a call to sendPacket.
@@ -219,7 +222,7 @@ public class ClientMsg {
 	}
 
 	private boolean isTechnicalPacket(int destId, byte[] data) {
-		return destId == 0 && data != null && data.length > 0 && data[0] == 1;
+		return destId == 0; // tous les paquets vers le serveur sont techniques
 	}
 	//envoie des paquet de gestion pour le groupe
 	
@@ -269,6 +272,29 @@ public class ClientMsg {
 	    }
 	}
 	
+	
+	//-----------------------------------------------
+	//Envoi fichier
+	
+	public void sendFile(int destId, File file) throws IOException {
+	    byte[] fileBytes = Files.readAllBytes(file.toPath());
+	    byte[] nameBytes = file.getName().getBytes(StandardCharsets.UTF_8);
+
+	    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+	    DataOutputStream localDos = new DataOutputStream(bos);
+
+	    dos.writeByte(7);                    // type FILE_MSG
+	    dos.writeInt(nameBytes.length);      // taille du nom
+	    dos.write(nameBytes);                // nom du fichier
+	    dos.writeInt(fileBytes.length);      // taille du fichier
+	    dos.write(fileBytes);                // contenu brut
+
+	    dos.flush();
+	    sendPacket(destId, bos.toByteArray());
+	}
+	
+	//-----------------------------------------------------
+
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		ClientMsg c = new ClientMsg("localhost", 1666);
 
