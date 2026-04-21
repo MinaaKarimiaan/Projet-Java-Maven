@@ -221,7 +221,54 @@ public class ClientMsg {
 	private boolean isTechnicalPacket(int destId, byte[] data) {
 		return destId == 0 && data != null && data.length > 0 && data[0] == 1;
 	}
-
+	//envoie des paquet de gestion pour le groupe
+	
+	public void sendAddMember(int groupId, int userId) {
+		
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    // creation d'un tableau ou liste pour ranger mes bytes
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(3);      // type du paquet = 3 (ajout membre)
+	        dos.writeInt(userId);  // l'utilisateur à ajouter
+	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
+	        
+	        sendPacket(0, data); // groupId est négatif
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	public void sendRemoveMember(int groupId, int userId) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(4);       // type du paquet = 4 (suppression membre)
+	        dos.writeInt(groupId);  // ID du groupe (négatif)
+	        dos.writeInt(userId);   // ID du user à supprimer
+	        byte[] data = baos.toByteArray();
+	        
+	        sendPacket(0, data); // 0 paquet destinatiner au serveur
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	public void sendRemoveGroup(int groupId) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(5);       // type = 5 (suppression groupe)
+	        dos.writeInt(groupId);  // ID du groupe (négatif)
+	        byte[] data = baos.toByteArray();
+	        
+	        sendPacket(0, data); // destination = serveur
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		ClientMsg c = new ClientMsg("localhost", 1666);
 

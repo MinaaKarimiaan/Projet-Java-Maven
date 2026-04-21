@@ -26,23 +26,100 @@ public class ServerPacketProcessor implements PacketProcessor {
 
 	@Override
 	public void process(Packet p) {
-		// ByteBufferVersion. On aurait pu utiliser un ByteArrayInputStream + DataInputStream à la place
-		ByteBuffer buf = ByteBuffer.wrap(p.data);
-		byte type = buf.get();
-		
-		if (type == 1) { // cas creation de groupe
-			createGroup(p.srcId,buf);
-		} else {
-			LOG.warning("Server message of type=" + type + " not handled by procesor");
-		}
+	    ByteBuffer buf = ByteBuffer.wrap(p.data);
+	    byte type = buf.get();
+
+	    if (type == 1) {
+	        createGroup(p.srcId, buf);
+	    } else if (type == 2) {
+	        addMember(p.srcId, buf);
+	    } else if (type == 3) {
+	        removeMember(p.srcId, buf);
+	    } else if (type == 4) {
+	        removeGroup(p.srcId, buf);
+	    } else {
+	        LOG.warning("Server message of type=" + type + " not handled");
+	    }
 	}
-	
+
 	public void createGroup(int ownerId, ByteBuffer data) {
-		int nb = data.getInt();
-		GroupMsg g = server.createGroup(ownerId);
-		for (int i = 0; i < nb; i++) {
-			g.addMember(server.getUser(data.getInt()));
-		}
+	    int nb = data.getInt();
+	    GroupMsg g = server.createGroup(ownerId);
+	    for (int i = 0; i < nb; i++) {
+	        g.addMember(server.getUser(data.getInt()));
+	    }
+
+	    // Notification au owner
+	    UserMsg owner = server.getUser(ownerId);
+	    if (owner != null) {
+	        String msg = "Groupe cree avec succes. ID = " + g.getId();
+	        owner.process(new Packet(0, ownerId, msg.getBytes()));
+	    }
+	}
+
+	public void addMember(int requesterId, ByteBuffer data) {
+	    int groupId = data.getInt();
+	    int userId = data.getInt();
+	    GroupMsg g = server.getGroup(groupId);
+	    UserMsg u = server.getUser(userId);
+
+	    UserMsg requester = server.getUser(requesterId);
+	    if (requester == null) return;
+
+	    if (g != null && u != null) {
+	        g.addMember(u);
+	        // Notification au demandeur
+	        String msg = "Utilisateur " + userId + " ajoute au groupe " + groupId;
+	        requester.process(new Packet(0, requesterId, msg.getBytes()));
+	    } else {
+	        // Notification erreur
+	        String msg = "Erreur : utilisateur ou groupe introuvable";
+	        requester.process(new Packet(0, requesterId, msg.getBytes()));
+	    }
+	}
+
+	public void removeMember(int requesterId, ByteBuffer data) {
+	    int groupId = data.getInt();
+	    int userId = data.getInt();
+	    GroupMsg g = server.getGroup(groupId);
+	    UserMsg u = server.getUser(userId);
+
+	    UserMsg requester = server.getUser(requesterId);
+	    if (requester == null) return;
+
+	    if (g != null && u != null) {
+	        boolean removed = g.removeMember(u);
+	        if (removed) {
+	            // Notification au demandeur
+	            String msg = "Utilisateur " + userId + " supprime du groupe " + groupId;
+	            requester.process(new Packet(0, requesterId, msg.getBytes()));
+	        } else {
+	            // Erreur : owner ne peut pas être supprimé
+	            String msg = "Erreur : impossible de supprimer le owner du groupe";
+	            requester.process(new Packet(0, requesterId, msg.getBytes()));
+	        }
+	    } else {
+	        String msg = "Erreur : utilisateur ou groupe introuvable";
+	        requester.process(new Packet(0, requesterId, msg.getBytes()));
+	    }
+	}
+
+	public void removeGroup(int requesterId, ByteBuffer data) {
+	    int groupId = data.getInt();
+	    GroupMsg g = server.getGroup(groupId);
+
+	    UserMsg requester = server.getUser(requesterId);
+	    if (requester == null) return;
+
+	    if (g != null) {
+	        server.removeGroup(groupId);
+	        // Notification au demandeur
+	        String msg = "Groupe " + groupId + " supprime avec succes";
+	        requester.process(new Packet(0, requesterId, msg.getBytes()));
+	    } else {
+	        String msg = "Erreur : groupe introuvable";
+	        requester.process(new Packet(0, requesterId, msg.getBytes()));
+	    }
 	}
 
 }

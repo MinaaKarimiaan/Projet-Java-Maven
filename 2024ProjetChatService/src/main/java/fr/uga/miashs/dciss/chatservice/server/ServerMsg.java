@@ -80,6 +80,10 @@ public class ServerMsg {
 		return users.get(userId);
 	}
 	
+	public GroupMsg getGroup(int groupId) {
+	    return groups.get(groupId);
+	}
+	
 	// Methode utilisée pour savoir quoi faire d'un paquet
 	// reçu par le serveur
 	public void processPacket(Packet p) {
