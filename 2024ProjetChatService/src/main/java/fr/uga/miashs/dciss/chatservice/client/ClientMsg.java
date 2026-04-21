@@ -14,10 +14,12 @@ package fr.uga.miashs.dciss.chatservice.client;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import fr.uga.miashs.dciss.chatservice.common.Packet;
+import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
+import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
 
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
@@ -37,6 +39,8 @@ public class ClientMsg {
 	private DataInputStream dis;
 
 	private int identifier;
+	private ClientDatabase database;
+	private HistoriqueRepository historiqueRepository;
 
 	private List<MessageListener> mListeners;
 	private List<ConnectionListener> cListeners;
@@ -121,6 +125,7 @@ public class ClientMsg {
 				if (identifier == 0) {
 					identifier = dis.readInt();
 				}
+				initializeDatabase();
 				// start the receive loop
 				new Thread(() -> receiveLoop()).start();
 				notifyConnectionListeners(true);
@@ -128,7 +133,18 @@ public class ClientMsg {
 				e.printStackTrace();
 				// error, close session
 				closeSession();
+			} catch (SQLException e) {
+				e.printStackTrace();
+				closeSession();
 			}
+		}
+	}
+
+	private void initializeDatabase() throws SQLException {
+		if (database == null) {
+			database = new ClientDatabase("target/client-history-" + identifier);
+			database.initSchema();
+			historiqueRepository = new HistoriqueRepository(database);
 		}
 	}
 
@@ -145,13 +161,13 @@ public class ClientMsg {
 				dos.writeInt(data.length);
 				dos.write(data);
 				dos.flush();
-			} // Modifié
-		}  catch (IOException e) {
-		    System.err.println("Connexion perdue avec le serveur");
-		    closeSession();
-		} // Amélioration , crèe une erreur et on sert pourquoi il ya erreur
-		
-	}
+			} 
+			persistPacket(identifier, destId, data, "OUT");
+			} catch (IOException e) {
+			    System.err.println("Connexion perdue avec le serveur");
+			    closeSession();
+			}
+		}
 	
 	public void deleteGroup(int groupId) {
 	    try {
@@ -194,6 +210,7 @@ public class ClientMsg {
 				int length = dis.readInt();
 				byte[] data = new byte[length];
 				dis.readFully(data);
+				persistPacket(sender, dest, data, "IN");
 				notifyMessageListeners(new Packet(sender, dest, data));
 
 			}
@@ -210,7 +227,27 @@ public class ClientMsg {
 		} catch (IOException e) {
 		}
 		s = null;
+		if (database != null) {
+			database.close();
+			database = null;
+			historiqueRepository = null;
+		}
 		notifyConnectionListeners(false);
+	}
+
+	private void persistPacket(int srcId, int destId, byte[] data, String direction) {
+		if (historiqueRepository == null || isTechnicalPacket(destId, data)) {
+			return;
+		}
+		try {
+			historiqueRepository.sauvegarderMessage(srcId, destId, data, direction);
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private boolean isTechnicalPacket(int destId, byte[] data) {
+		return destId == 0 && data != null && data.length > 0 && data[0] == 1;
 	}
 
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
@@ -263,6 +300,7 @@ public class ClientMsg {
 			}
 
 		}
+		sc.close();
 
 		/*
 		 * int id =1+(c.getIdentifier()-1) % 2; System.out.println("send to "+id);
