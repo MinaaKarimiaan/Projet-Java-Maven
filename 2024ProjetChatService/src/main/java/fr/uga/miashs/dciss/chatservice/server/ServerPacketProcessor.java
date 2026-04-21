@@ -121,5 +121,11 @@ public class ServerPacketProcessor implements PacketProcessor {
 	        requester.process(new Packet(0, requesterId, msg.getBytes()));
 	    }
 	}
+	// Ajouté 
+	 public void deleteGroup(int requesterId, ByteBuffer data) {
+	        int groupId = data.getInt();
+	        server.removeGroup(groupId, requesterId);
+	    }
+	}
 
-}
+

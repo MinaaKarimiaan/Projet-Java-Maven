@@ -164,13 +164,41 @@ public class ClientMsg {
 				dos.writeInt(data.length);
 				dos.write(data);
 				dos.flush();
-			}
+			} 
 			persistPacket(identifier, destId, data, "OUT");
-		} catch (IOException e) {
-			// error, connection closed
-			closeSession();
+			} catch (IOException e) {
+			    System.err.println("Connexion perdue avec le serveur");
+			    closeSession();
+			}
 		}
-		
+	
+	public void deleteGroup(int groupId) {
+	    try {
+	        // Création d’un flux en mémoire pour construire le message binaire
+	        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+	        // Permet d’écrire facilement des types primitifs (byte, int, etc.)
+	        DataOutputStream dos = new DataOutputStream(bos);
+
+	        // On écrit le type de commande :
+	        // 2 = DELETE_GROUP (convention définie dans le protocole)
+	        dos.writeByte(5);
+
+	        // On écrit l’identifiant du groupe à supprimer
+	        dos.writeInt(groupId);
+
+	        // On force l’écriture dans le buffer mémoire
+	        dos.flush();
+
+	        // On envoie le packet au serveur :
+	        // destId = 0 → serveur
+	        // data = contenu binaire (type + groupId)
+	        sendPacket(0, bos.toByteArray());
+
+	    } catch (IOException e) {
+	        // En cas d’erreur réseau ou d’écriture
+	        e.printStackTrace();
+	    }
 	}
 
 	/**
