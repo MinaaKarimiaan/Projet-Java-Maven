@@ -313,7 +313,6 @@ public class ClientMsg {
 						p.srcId + " says to " + p.destId + ": " + new String(p.data, StandardCharsets.UTF_8));
 			}
 		});
-
 		c.addConnectionListener(active -> {
 			if (!active)
 				System.exit(0);
