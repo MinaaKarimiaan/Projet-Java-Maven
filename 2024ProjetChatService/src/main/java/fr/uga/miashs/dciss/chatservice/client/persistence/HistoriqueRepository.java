@@ -19,6 +19,9 @@ public class HistoriqueRepository {
     }
 
     public void sauvegarderMessage(int srcId, int destId, byte[] data, String direction) throws SQLException {
+    	if (data == null || data.length == 0) return;
+        byte type = data[0];
+        if (type == 7) return; // ne pas sauvegarder les fichiers comme du texte
         String contenu = new String(data, StandardCharsets.UTF_8);
         boolean estGroupe = destId < 0;
         sauvegarderMessage(srcId, destId, contenu, estGroupe, direction);
