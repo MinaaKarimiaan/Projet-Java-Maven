@@ -14,15 +14,16 @@ package fr.uga.miashs.dciss.chatservice.client;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import fr.uga.miashs.dciss.chatservice.common.Packet;
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
-
-import java.nio.file.*;
-import java.nio.charset.StandardCharsets;
+import fr.uga.miashs.dciss.chatservice.common.Packet;
 
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
@@ -33,6 +34,8 @@ import java.nio.charset.StandardCharsets;
  * are closed thanks to the method closeSession().
  */
 public class ClientMsg {
+
+	private static final Pattern MEME_PREFIX = Pattern.compile("^\\[([^\\]]+)]\\s*(.*)$", Pattern.DOTALL);
 
 	private String serverAddress;
 	private int serverPort;
@@ -48,14 +51,6 @@ public class ClientMsg {
 	private List<MessageListener> mListeners;
 	private List<ConnectionListener> cListeners;
 
-	/**
-	 * Create a client with an existing id, that will connect to the server at the
-	 * given address and port
-	 * 
-	 * @param id      The client id
-	 * @param address The server address or hostname
-	 * @param port    The port number
-	 */
 	public ClientMsg(int id, String address, int port) {
 		if (id < 0)
 			throw new IllegalArgumentException("id must not be less than 0");
@@ -68,55 +63,32 @@ public class ClientMsg {
 		cListeners = new ArrayList<>();
 	}
 
-	/**
-	 * Create a client without id, the server will provide an id during the the
-	 * session start
-	 * 
-	 * @param address The server address or hostname
-	 * @param port    The port number
-	 */
 	public ClientMsg(String address, int port) {
 		this(0, address, port);
 	}
 
-	/**
-	 * Register a MessageListener to the client. It will be notified each time a
-	 * message is received.
-	 * 
-	 * @param l
-	 */
 	public void addMessageListener(MessageListener l) {
 		if (l != null)
 			mListeners.add(l);
 	}
+
 	protected void notifyMessageListeners(Packet p) {
 		mListeners.forEach(x -> x.messageReceived(p));
 	}
-	
-	/**
-	 * Register a ConnectionListener to the client. It will be notified if the connection  start or ends.
-	 * 
-	 * @param l
-	 */
+
 	public void addConnectionListener(ConnectionListener l) {
 		if (l != null)
 			cListeners.add(l);
 	}
+
 	protected void notifyConnectionListeners(boolean active) {
 		cListeners.forEach(x -> x.connectionEvent(active));
 	}
-
 
 	public int getIdentifier() {
 		return identifier;
 	}
 
-	/**
-	 * Method to be called to establish the connection.
-	 * 
-	 * @throws UnknownHostException
-	 * @throws IOException
-	 */
 	public void startSession() throws UnknownHostException {
 		if (s == null || s.isClosed()) {
 			try {
@@ -129,12 +101,10 @@ public class ClientMsg {
 					identifier = dis.readInt();
 				}
 				initializeDatabase();
-				// start the receive loop
 				new Thread(() -> receiveLoop()).start();
 				notifyConnectionListeners(true);
 			} catch (IOException e) {
 				e.printStackTrace();
-				// error, close session
 				closeSession();
 			} catch (SQLException e) {
 				e.printStackTrace();
@@ -151,12 +121,6 @@ public class ClientMsg {
 		}
 	}
 
-	/**
-	 * Send a packet to the specified destination (etiher a userId or groupId)
-	 * 
-	 * @param destId the destinatiion id
-	 * @param data   the data to be sent
-	 */
 	public void sendPacket(int destId, byte[] data) {
 		try {
 			synchronized (dos) {
@@ -164,22 +128,30 @@ public class ClientMsg {
 				dos.writeInt(data.length);
 				dos.write(data);
 				dos.flush();
-			} 
-			persistPacket(identifier, destId, data, "OUT");
-			} catch (IOException e) {
-			    System.err.println("Connexion perdue avec le serveur");
-			    closeSession();
 			}
+			persistPacket(identifier, destId, data, "OUT");
+		} catch (IOException e) {
+			System.err.println("Connexion perdue avec le serveur");
+			closeSession();
 		}
-	
+	}
 
-	/**
-	 * Start the receive loop. Has to be called only once.
-	 */
+	public void deleteGroup(int groupId) {
+		try {
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			DataOutputStream dos = new DataOutputStream(bos);
+			dos.writeByte(5);
+			dos.writeInt(groupId);
+			dos.flush();
+			sendPacket(0, bos.toByteArray());
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
 	private void receiveLoop() {
 		try {
 			while (s != null && !s.isClosed()) {
-
 				int sender = dis.readInt();
 				int dest = dis.readInt();
 				int length = dis.readInt();
@@ -187,7 +159,6 @@ public class ClientMsg {
 				dis.readFully(data);
 				persistPacket(sender, dest, data, "IN");
 				notifyMessageListeners(new Packet(sender, dest, data));
-
 			}
 		} catch (IOException e) {
 			// error, connection closed
@@ -210,6 +181,24 @@ public class ClientMsg {
 		notifyConnectionListeners(false);
 	}
 
+	private static String buildOutgoingMessage(String input) {
+		Matcher matcher = MEME_PREFIX.matcher(input);
+		if (!matcher.matches()) {
+			return input;
+		}
+		String memeName = matcher.group(1).trim();
+		String memeContent = meme.get(memeName);
+		if (memeContent == null) {
+			System.out.println("Meme inconnu : " + memeName + ". Tapez \\memes pour voir la liste.");
+			return null;
+		}
+		String text = matcher.group(2);
+		if (text == null || text.isBlank()) {
+			return memeContent;
+		}
+		return memeContent + System.lineSeparator() + text;
+	}
+
 	private void persistPacket(int srcId, int destId, byte[] data, String direction) {
 		if (historiqueRepository == null || isTechnicalPacket(destId, data)) {
 			return;
@@ -222,201 +211,191 @@ public class ClientMsg {
 	}
 
 	private boolean isTechnicalPacket(int destId, byte[] data) {
-		return destId == 0; // tous les paquets vers le serveur sont techniques
+		return destId == 0;
 	}
-	//envoie des paquet de gestion pour le groupe
-	
+
 	public void sendAddMember(int groupId, int userId) {
-		
-	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-	    // creation d'un tableau ou liste pour ranger mes bytes
-	    DataOutputStream dos = new DataOutputStream(baos);
-	    
-	    try {
-	        dos.writeByte(2);      // type du paquet = 3 (ajout membre)
-	        dos.writeInt(groupId);
-	        dos.writeInt(userId);  // l'utilisateur à ajouter
-	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
-	        
-	        sendPacket(0, data); // groupId est négatif
-	    } catch (IOException e) {
-	        e.printStackTrace();
-	    }
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(baos);
+
+		try {
+			dos.writeByte(2);
+			dos.writeInt(groupId);
+			dos.writeInt(userId);
+			byte[] data = baos.toByteArray();
+			sendPacket(0, data);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
+
 	public void sendRemoveMember(int groupId, int userId) {
-	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-	    DataOutputStream dos = new DataOutputStream(baos);
-	    
-	    try {
-	        dos.writeByte(3);       // type du paquet = 3 (suppression membre)
-	        dos.writeInt(groupId);  // ID du groupe (négatif)
-	        dos.writeInt(userId);   // ID du user à supprimer
-	        byte[] data = baos.toByteArray();
-	        
-	        sendPacket(0, data); // 0 paquet destinatair au serveur
-	    } catch (IOException e) {
-	        e.printStackTrace();
-	    }
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(baos);
+
+		try {
+			dos.writeByte(3);
+			dos.writeInt(groupId);
+			dos.writeInt(userId);
+			byte[] data = baos.toByteArray();
+			sendPacket(0, data);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
+
 	public void sendRemoveGroup(int groupId) {
-	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-	    DataOutputStream dos = new DataOutputStream(baos);
-	    
-	    try {
-	        dos.writeByte(4);       // type = 5 (suppression groupe)
-	        dos.writeInt(groupId);  // ID du groupe (négatif)
-	        byte[] data = baos.toByteArray();
-	        
-	        sendPacket(0, data); // destination = serveur
-	    } catch (IOException e) {
-	        e.printStackTrace();
-	    }
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(baos);
+
+		try {
+			dos.writeByte(4);
+			dos.writeInt(groupId);
+			byte[] data = baos.toByteArray();
+			sendPacket(0, data);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
-	
+
 	public void sendCreateGroup(List<Integer> memberIds) {
-	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-	    DataOutputStream dos = new DataOutputStream(baos);
-	    
-	    try {
-	        dos.writeByte(1);                    // type = 1 (créer groupe)
-	        dos.writeInt(memberIds.size());      // nombre de membres
-	        for (int id : memberIds) {
-	            dos.writeInt(id);                // ID de chaque membre
-	        }
-	        byte[] data = baos.toByteArray();
-	        sendPacket(0, data);   // destination = serveur
-	    } catch (IOException e) {
-	        e.printStackTrace();
-	    }
-	}
-	
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(baos);
 
-	//Envoi fichier
+		try {
+			dos.writeByte(1);
+			dos.writeInt(memberIds.size());
+			for (int id : memberIds) {
+				dos.writeInt(id);
+			}
+			byte[] data = baos.toByteArray();
+			sendPacket(0, data);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
 	public void sendFile(int destId, File file) throws IOException {
-	    byte[] fileBytes = Files.readAllBytes(file.toPath());
-	    byte[] nameBytes = file.getName().getBytes(StandardCharsets.UTF_8);
+		byte[] fileBytes = Files.readAllBytes(file.toPath());
+		byte[] nameBytes = file.getName().getBytes(StandardCharsets.UTF_8);
 
-	    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-	    DataOutputStream dos = new DataOutputStream(bos);
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		DataOutputStream localDos = new DataOutputStream(bos);
 
-	    dos.writeByte(7);                    // type FILE_MSG
-	    dos.writeInt(nameBytes.length);      // taille du nom
-	    dos.write(nameBytes);                // nom du fichier
-	    dos.writeInt(fileBytes.length);      // taille du fichier
-	    dos.write(fileBytes);                // contenu brut
-
-	    dos.flush();
-	    sendPacket(destId, bos.toByteArray());
+		localDos.writeByte(MessageListener.FILE_MSG);
+		localDos.writeInt(nameBytes.length);
+		localDos.write(nameBytes);
+		localDos.writeInt(fileBytes.length);
+		localDos.write(fileBytes);
+		localDos.flush();
+		sendPacket(destId, bos.toByteArray());
 	}
-	
 
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		Scanner sc = new Scanner(System.in);
 		System.out.print("Entrez votre ID (0 pour nouveau client) : ");
 		int id = Integer.parseInt(sc.nextLine());
 		ClientMsg c = new ClientMsg(id, "localhost", 1666);
-		// ClientMsg c = new ClientMsg("localhost", 1666);
-		
-		// add a dummy listener that print the content of message as a string
-		c.addMessageListener(p -> System.out.println(p.srcId + " says to " + p.destId + ": " + new String(p.data)));
-		
-		// add a connection listener that exit application when connection closed
-		c.addConnectionListener(active ->  {if (!active) System.exit(0);});
+
+		c.addMessageListener(new MessageListener() {
+			@Override
+			public void messageReceived(Packet p) {
+				if (isFilePacket(p)) {
+					try {
+						Path saved = saveFilePacket(p);
+						System.out.println(p.srcId + " sent file to " + p.destId + ": " + saved.getFileName());
+					} catch (IOException e) {
+						System.out.println("Erreur lors de la reception du fichier: " + e.getMessage());
+					}
+					return;
+				}
+				System.out.println(
+						p.srcId + " says to " + p.destId + ": " + new String(p.data, StandardCharsets.UTF_8));
+			}
+		});
+
+		c.addConnectionListener(active -> {
+			if (!active)
+				System.exit(0);
+		});
 
 		c.startSession();
 		System.out.println("Vous êtes : " + c.getIdentifier());
-		
-		
-
-		// Thread.sleep(5000);
-
-		// l'utilisateur avec id 4 crée un grp avec 1 et 3 dedans (et lui meme)
-//		if (c.getIdentifier() == 4) {
-//			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-//			DataOutputStream dos = new DataOutputStream(bos);
-//
-//			// byte 1 : create group on server
-//			dos.writeByte(1);
-//
-//			// nb members
-//			dos.writeInt(2);
-//			// list members
-//			dos.writeInt(1);
-//			dos.writeInt(3);
-//			dos.flush();
-//
-//			c.sendPacket(0, bos.toByteArray());
-//
-//		}
-		
-		
+		System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, /sendfile, \\memes, \\meme <nom>, \\quit");
+		System.out.println("Astuce : tapez [nom] au debut du message pour envoyer le meme avant le texte.");
 
 		String lu = null;
 		while (!"\\quit".equals(lu)) {
-		    try {
-		        System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, /sendfile ou entrez un ID pour envoyer un message");
-		        lu = sc.nextLine();
+			try {
+				System.out.println("Entrez une commande ou l'ID du destinataire :");
+				lu = sc.nextLine();
 
-		        if (lu.equalsIgnoreCase("/creategroup")) {
-		            // /creategroup nbMembres id1 id2 ...
-		        	List<Integer> members = new ArrayList<>();
-		    		members.add(2);
-		    		members.add(3);
-		        	c.sendCreateGroup(members);
+				if ("\\memes".equals(lu)) {
+					System.out.println(meme.previewAll());
+					continue;
+				}
+				if (lu.startsWith("\\meme ")) {
+					String memeName = lu.substring("\\meme ".length()).trim();
+					String preview = meme.preview(memeName);
+					if (preview == null) {
+						System.out.println("Meme inconnu : " + memeName);
+					} else {
+						System.out.println(preview);
+					}
+					continue;
+				}
 
-		        } else if (lu.equalsIgnoreCase("/addmember")) {
-		            // /addmember groupId userId
-		           
-		            c.sendAddMember(-1, 3);
-
-		        } else if (lu.equalsIgnoreCase("/removemember")) {
-		            // /removemember groupId userId
-		          
-		            c.sendRemoveMember (-1, 3);
-
-		        } else if (lu.equalsIgnoreCase("/deletegroup")) {
-		            // /deletegroup groupId
-		            
-		            c.sendRemoveGroup(-1);
-
-		        } else if (lu.equalsIgnoreCase("/sendfile")) {
-		            System.out.println("ID du destinataire ? ");
-		            int dest = Integer.parseInt(sc.nextLine());
-		            System.out.println("Chemin du fichier ? (ex: C:/Users/sylvi/Desktop/test.txt) ");
-		            String path = sc.nextLine();
-		            File file = new File(path);
-		            if (file.exists()) {
-		                c.sendFile(dest, file);
-		                System.out.println("Fichier envoyé !");
-		            } else {
-		                System.out.println("Fichier introuvable !");
-		            }
-		            
-		        } else {
-		            // envoi message normal
-		            System.out.println("A qui voulez vous écrire ? ");
-		            int dest = Integer.parseInt(lu);
-		            System.out.println("Votre message ? ");
-		            lu = sc.nextLine();
-		            c.sendPacket(dest, lu.getBytes());   
-		        }
-		        
-		    } catch (InputMismatchException | NumberFormatException e) {
-		        System.out.println("Mauvais format");
-		    }
+				if (lu.equalsIgnoreCase("/creategroup")) {
+					List<Integer> members = new ArrayList<>();
+					members.add(2);
+					members.add(3);
+					c.sendCreateGroup(members);
+				} else if (lu.equalsIgnoreCase("/addmember")) {
+					c.sendAddMember(-1, 3);
+				} else if (lu.equalsIgnoreCase("/removemember")) {
+					c.sendRemoveMember(-1, 3);
+				} else if (lu.equalsIgnoreCase("/deletegroup")) {
+					c.sendRemoveGroup(-1);
+				} else if (lu.equalsIgnoreCase("/sendfile")) {
+					System.out.println("ID du destinataire ? ");
+					int dest = Integer.parseInt(sc.nextLine());
+					System.out.println("Chemin du fichier ? ");
+					String path = sc.nextLine();
+					File file = new File(path);
+					if (file.exists()) {
+						c.sendFile(dest, file);
+						System.out.println("Fichier envoyé !");
+					} else {
+						System.out.println("Fichier introuvable !");
+					}
+				} else {
+					int dest = Integer.parseInt(lu);
+					System.out.println("Votre message ? ");
+					String message = sc.nextLine();
+					if ("\\memes".equals(message)) {
+						System.out.println(meme.previewAll());
+						continue;
+					}
+					if (message.startsWith("\\meme ")) {
+						String memeName = message.substring("\\meme ".length()).trim();
+						String preview = meme.preview(memeName);
+						if (preview == null) {
+							System.out.println("Meme inconnu : " + memeName);
+						} else {
+							System.out.println(preview);
+						}
+						continue;
+					}
+					String outgoing = buildOutgoingMessage(message);
+					if (outgoing != null) {
+						c.sendPacket(dest, outgoing.getBytes(StandardCharsets.UTF_8));
+					}
+				}
+			} catch (InputMismatchException | NumberFormatException e) {
+				System.out.println("Mauvais format");
+			}
 		}
 		sc.close();
-
-		/*
-		 * int id =1+(c.getIdentifier()-1) % 2; System.out.println("send to "+id);
-		 * c.sendPacket(id, "bonjour".getBytes());
-		 * 
-		 * 
-		 * Thread.sleep(10000);
-		 */
-
 		c.closeSession();
-
 	}
-
 }
