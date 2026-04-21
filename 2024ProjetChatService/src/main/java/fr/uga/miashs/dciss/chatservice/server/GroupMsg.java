@@ -16,14 +16,14 @@ import java.util.concurrent.ConcurrentSkipListSet;
 
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 
-public class GroupMsg implements PacketProcessor {
+public class GroupMsg implements PacketProcessor {// le groupe peut traiter et transmettre des messages 
 
-	private int groupId;
-	private UserMsg owner;
+	private int groupId; // identifiant du groupe
+	private UserMsg owner; // utilisateur propriétaire
 	private Set<UserMsg> members;
 	
 	public GroupMsg(int groupId, UserMsg owner) {
-		if (groupId>-1) throw new IllegalArgumentException("id must not be less than 0");
+		if (groupId>=0) throw new IllegalArgumentException("id must be strictly negative");
 		if (owner==null) throw new IllegalArgumentException("owner cannot be null");
 		this.groupId=groupId;
 		this.owner=owner;
@@ -41,6 +41,10 @@ public class GroupMsg implements PacketProcessor {
 	 * @param s
 	 * @return
 	 */
+	// méthode ajoutée 
+		public UserMsg getOwner() {
+		    return owner;
+		}
 	public boolean addMember(UserMsg s) {
 		return s!=null && members.add(s) && s.getGroups().add(this);
 	}

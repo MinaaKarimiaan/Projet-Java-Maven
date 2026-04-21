@@ -62,11 +62,34 @@ public class ServerMsg {
 		return res;
 	}
 	
-	public boolean removeGroup(int groupId) {
-		GroupMsg g =groups.remove(groupId);
-		if (g==null) return false;
-		g.beforeDelete();
-		return true;
+	//public boolean //removeGroup(int groupId) {
+		//GroupMsg g =groups.remove(groupId);
+		//if (g==null) return false;
+		//g.beforeDelete();
+		//return true;
+	//} Méthode modifiée
+	public boolean removeGroup(int groupId, int requesterId) {
+
+	    //  1. Récupérer le groupe
+	    GroupMsg g = groups.get(groupId);
+	    if (g == null) return false;
+
+	    //  2. Récupérer l'utilisateur qui demande la suppression
+	    UserMsg requester = users.get(requesterId);
+	    if (requester == null) return false;
+
+	    //  3. Vérifier que seul le propriétaire peut supprimer
+	    if (!g.getOwner().equals(requester)) {
+	        return false;
+	    }
+
+	    // 🧹 4. Nettoyer les relations utilisateurs ↔ groupe
+	    g.beforeDelete();
+
+	    // ❌ 5. Supprimer du serveur
+	    groups.remove(groupId);
+
+	    return true;
 	}
 	
 	public boolean removeUser(int userId) {
@@ -96,7 +119,6 @@ public class ServerMsg {
 		else { // message de gestion pour le serveur
 			pp=sp;
 		}
-		
 		if (pp != null) {
 			pp.process(p);
 		}

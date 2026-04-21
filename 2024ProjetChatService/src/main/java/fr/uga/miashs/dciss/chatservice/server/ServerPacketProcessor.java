@@ -32,7 +32,11 @@ public class ServerPacketProcessor implements PacketProcessor {
 		
 		if (type == 1) { // cas creation de groupe
 			createGroup(p.srcId,buf);
-		} else {
+			} // Ajouté 
+			else if (type == 5) { // cas de suppression de groupe
+				deleteGroup(p.srcId, buf);
+			}
+		 else {
 			LOG.warning("Server message of type=" + type + " not handled by procesor");
 		}
 	}
@@ -44,5 +48,11 @@ public class ServerPacketProcessor implements PacketProcessor {
 			g.addMember(server.getUser(data.getInt()));
 		}
 	}
+	// Ajouté 
+	 public void deleteGroup(int requesterId, ByteBuffer data) {
+	        int groupId = data.getInt();
+	        server.removeGroup(groupId, requesterId);
+	    }
+	}
 
-}
+
