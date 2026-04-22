@@ -20,11 +20,20 @@ import java.util.Set;
 /**
  * Catalogue des memes ASCII disponibles cote client.
  *
- * Utilisation dans le terminal :
- * - Tapez \memes pour voir la liste des noms disponibles.
- * - Tapez \meme <nom> pour afficher un apercu d'un meme.
- * - Tapez [nom] au debut du message pour envoyer le meme avant votre texte.
- *   Exemple : [chat] bonjour
+ * Mode d'emploi dans le terminal :
+ * - Au demarrage du client, l'utilisateur choisit d'abord un avatar (0-9),
+ *   puis saisit un pseudo.
+ * - Chaque message envoye est automatiquement formate sur deux lignes :
+ *   la premiere contient "avatar + pseudo", la seconde contient le texte.
+ * - Tapez \memes pour afficher la liste des memes disponibles.
+ * - Tapez \meme <nom> pour afficher un apercu d'un meme sans l'envoyer.
+ * - Tapez [nom] au debut du message pour inserer automatiquement le meme
+ *   avant votre texte.
+ * - Exemple : [chat] bonjour a tous
+ *
+ * Exemple de message envoye :
+ * (⌐■_■) Alice
+ * Bonjour !
  */
 public final class meme {
 

@@ -45,6 +45,8 @@ public class ClientMsg {
 	private DataInputStream dis;
 
 	private int identifier;
+	private String nickname;
+	private String avatar;
 	private ClientDatabase database;
 	private HistoriqueRepository historiqueRepository;
 
@@ -59,6 +61,8 @@ public class ClientMsg {
 		serverAddress = address;
 		serverPort = port;
 		identifier = id;
+		nickname = "User";
+		avatar = AvatarCatalog.get(0);
 		mListeners = new ArrayList<>();
 		cListeners = new ArrayList<>();
 	}
@@ -87,6 +91,19 @@ public class ClientMsg {
 
 	public int getIdentifier() {
 		return identifier;
+	}
+
+	public void setProfile(String nickname, int avatarIndex) {
+		this.nickname = sanitizeNickname(nickname);
+		this.avatar = AvatarCatalog.get(avatarIndex);
+	}
+
+	public String getNickname() {
+		return nickname;
+	}
+
+	public String getAvatar() {
+		return avatar;
 	}
 
 	public void startSession() throws UnknownHostException {
@@ -181,10 +198,11 @@ public class ClientMsg {
 		notifyConnectionListeners(false);
 	}
 
-	private static String buildOutgoingMessage(String input) {
+	private String buildOutgoingMessage(String input) {
 		Matcher matcher = MEME_PREFIX.matcher(input);
+		String content = input;
 		if (!matcher.matches()) {
-			return input;
+			return prependProfileHeader(content);
 		}
 		String memeName = matcher.group(1).trim();
 		String memeContent = meme.get(memeName);
@@ -194,9 +212,54 @@ public class ClientMsg {
 		}
 		String text = matcher.group(2);
 		if (text == null || text.isBlank()) {
-			return memeContent;
+			content = memeContent;
+		} else {
+			content = memeContent + System.lineSeparator() + text;
 		}
-		return memeContent + System.lineSeparator() + text;
+		return prependProfileHeader(content);
+	}
+
+	private String prependProfileHeader(String content) {
+		return avatar + " " + nickname + System.lineSeparator() + content;
+	}
+
+	private static String sanitizeNickname(String rawNickname) {
+		if (rawNickname == null) {
+			return "User";
+		}
+		String normalized = rawNickname.replaceAll("\\R+", " ").trim();
+		if (normalized.isEmpty()) {
+			return "User";
+		}
+		if (normalized.length() > 24) {
+			return normalized.substring(0, 24);
+		}
+		return normalized;
+	}
+
+	private static int promptAvatarSelection(Scanner sc) {
+		while (true) {
+			System.out.println(AvatarCatalog.previewAll());
+			System.out.print("Entrez le numero de l'avatar (0-9) : ");
+			String line = sc.nextLine().trim();
+			try {
+				int index = Integer.parseInt(line);
+				if (AvatarCatalog.isValidIndex(index)) {
+					return index;
+				}
+			} catch (NumberFormatException e) {
+			}
+			System.out.println("Choix invalide. Reessayez.");
+		}
+	}
+
+	private static String promptNickname(Scanner sc, int identifier) {
+		System.out.print("Entrez votre pseudo : ");
+		String entered = sanitizeNickname(sc.nextLine());
+		if ("User".equals(entered)) {
+			return "User-" + identifier;
+		}
+		return entered;
 	}
 
 	private void persistPacket(int srcId, int destId, byte[] data, String direction) {
@@ -320,6 +383,10 @@ public class ClientMsg {
 
 		c.startSession();
 		System.out.println("Vous êtes : " + c.getIdentifier());
+		int avatarIndex = promptAvatarSelection(sc);
+		String nickname = promptNickname(sc, c.getIdentifier());
+		c.setProfile(nickname, avatarIndex);
+		System.out.println("Profil actif : " + c.getAvatar() + " " + c.getNickname());
 		System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, /sendfile, \\memes, \\meme <nom>, \\quit");
 		System.out.println("Astuce : tapez [nom] au debut du message pour envoyer le meme avant le texte.");
 
@@ -385,7 +452,7 @@ public class ClientMsg {
 						}
 						continue;
 					}
-					String outgoing = buildOutgoingMessage(message);
+					String outgoing = c.buildOutgoingMessage(message);
 					if (outgoing != null) {
 						c.sendPacket(dest, outgoing.getBytes(StandardCharsets.UTF_8));
 					}
