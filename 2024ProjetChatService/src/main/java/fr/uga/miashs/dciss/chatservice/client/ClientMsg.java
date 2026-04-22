@@ -172,35 +172,6 @@ public class ClientMsg {
 			}
 		}
 	
-	public void deleteGroup(int groupId) {
-	    try {
-	        // Création d’un flux en mémoire pour construire le message binaire
-	        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-
-	        // Permet d’écrire facilement des types primitifs (byte, int, etc.)
-	        DataOutputStream dos = new DataOutputStream(bos);
-
-	        // On écrit le type de commande :
-	        // 2 = DELETE_GROUP (convention définie dans le protocole)
-	        dos.writeByte(5);
-
-	        // On écrit l’identifiant du groupe à supprimer
-	        dos.writeInt(groupId);
-
-	        // On force l’écriture dans le buffer mémoire
-	        dos.flush();
-
-	        // On envoie le packet au serveur :
-	        // destId = 0 → serveur
-	        // data = contenu binaire (type + groupId)
-	        sendPacket(0, bos.toByteArray());
-
-	    } catch (IOException e) {
-	        // En cas d’erreur réseau ou d’écriture
-	        e.printStackTrace();
-	    }
-	}
-
 	/**
 	 * Start the receive loop. Has to be called only once.
 	 */
@@ -276,12 +247,12 @@ public class ClientMsg {
 	    DataOutputStream dos = new DataOutputStream(baos);
 	    
 	    try {
-	        dos.writeByte(3);       // type du paquet = 4 (suppression membre)
+	        dos.writeByte(3);       // type du paquet = 3 (suppression membre)
 	        dos.writeInt(groupId);  // ID du groupe (négatif)
 	        dos.writeInt(userId);   // ID du user à supprimer
 	        byte[] data = baos.toByteArray();
 	        
-	        sendPacket(0, data); // 0 paquet destinatiner au serveur
+	        sendPacket(0, data); // 0 paquet destinatair au serveur
 	    } catch (IOException e) {
 	        e.printStackTrace();
 	    }
@@ -296,6 +267,23 @@ public class ClientMsg {
 	        byte[] data = baos.toByteArray();
 	        
 	        sendPacket(0, data); // destination = serveur
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	
+	public void sendCreateGroup(List<Integer> memberIds) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    DataOutputStream dos = new DataOutputStream(baos);
+	    
+	    try {
+	        dos.writeByte(1);                    // type = 1 (créer groupe)
+	        dos.writeInt(memberIds.size());      // nombre de membres
+	        for (int id : memberIds) {
+	            dos.writeInt(id);                // ID de chaque membre
+	        }
+	        byte[] data = baos.toByteArray();
+	        sendPacket(0, data);   // destination = serveur
 	    } catch (IOException e) {
 	        e.printStackTrace();
 	    }
@@ -332,6 +320,11 @@ public class ClientMsg {
 
 		c.startSession();
 		System.out.println("Vous êtes : " + c.getIdentifier());
+		
+		List<Integer> members = new ArrayList<>();
+		members.add(2);
+		members.add(3);
+		c.sendCreateGroup(members);
 
 		// Thread.sleep(5000);
 
