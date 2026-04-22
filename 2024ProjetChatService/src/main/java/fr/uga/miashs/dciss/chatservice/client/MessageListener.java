@@ -15,22 +15,5 @@ import fr.uga.miashs.dciss.chatservice.common.Packet;
 
 public interface MessageListener {
 
-	void messageReceived(Packet p);
-	
-//------------------------------------
-	if (type == 7) { //FILE_MSG
-	    int nameLen = dis.readInt();
-	    byte[] nameBytes = new byte[nameLen];
-	    dis.readFully(nameBytes);
-	    String fileName = new String(nameBytes, StandardCharsets.UTF_8);
-
-	    int fileLen = dis.readInt();
-	    byte[] fileBytes = new byte[fileLen];
-	    dis.readFully(fileBytes);
-
-	    Files.write(Paths.get("received_" + fileName), fileBytes);
-	    System.out.println("Fichier reçu : " + fileName);
-	}
-//---------------------------------------------------
 
 }

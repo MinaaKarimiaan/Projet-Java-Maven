@@ -49,7 +49,7 @@ public class ServerMsg {
 		nextUserId = new AtomicInteger(1);
 		nextGroupId = new AtomicInteger(-1);
 		sp = new ServerPacketProcessor(this);
-		executor = Executors.newCachedThreadPool();
+		executor = Executors.newWorkStealingPool();
 	}
 	
 	public GroupMsg createGroup(int ownerId) {
@@ -62,34 +62,11 @@ public class ServerMsg {
 		return res;
 	}
 	
-	//public boolean //removeGroup(int groupId) {
-		//GroupMsg g =groups.remove(groupId);
-		//if (g==null) return false;
-		//g.beforeDelete();
-		//return true;
-	//} Méthode modifiée
-	public boolean removeGroup(int groupId, int requesterId) {
-
-	    //  1. Récupérer le groupe
-	    GroupMsg g = groups.get(groupId);
-	    if (g == null) return false;
-
-	    //  2. Récupérer l'utilisateur qui demande la suppression
-	    UserMsg requester = users.get(requesterId);
-	    if (requester == null) return false;
-
-	    //  3. Vérifier que seul le propriétaire peut supprimer
-	    if (!g.getOwner().equals(requester)) {
-	        return false;
-	    }
-
-	    // 🧹 4. Nettoyer les relations utilisateurs ↔ groupe
-	    g.beforeDelete();
-
-	    // ❌ 5. Supprimer du serveur
-	    groups.remove(groupId);
-
-	    return true;
+	public boolean removeGroup(int groupId) {
+		GroupMsg g =groups.remove(groupId);
+		if (g==null) return false;
+		g.beforeDelete();
+		return true;
 	}
 	
 	public boolean removeUser(int userId) {
@@ -123,6 +100,7 @@ public class ServerMsg {
 		else { // message de gestion pour le serveur
 			pp=sp;
 		}
+		
 		if (pp != null) {
 			pp.process(p);
 		}
@@ -154,7 +132,7 @@ public class ServerMsg {
 				// une pour envoyer des messages au client
 				// les deux boucles sont gérées au niveau de la classe UserMsg
 				UserMsg x = users.get(userId);
-				if (x!= null && x.open(s)) {
+				if (x.open(s)) {
 					LOG.info(userId + " connected");
 					// lancement boucle de reception
 					executor.submit(() -> x.receiveLoop());
@@ -188,3 +166,4 @@ public class ServerMsg {
 	}
 
 }
+

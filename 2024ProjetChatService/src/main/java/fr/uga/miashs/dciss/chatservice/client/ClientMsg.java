@@ -261,7 +261,7 @@ public class ClientMsg {
 	    DataOutputStream dos = new DataOutputStream(baos);
 	    
 	    try {
-	        dos.writeByte(3);      // type du paquet = 3 (ajout membre)
+	        dos.writeByte(2);      // type du paquet = 3 (ajout membre)
 	        dos.writeInt(userId);  // l'utilisateur à ajouter
 	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
 	        
@@ -275,7 +275,7 @@ public class ClientMsg {
 	    DataOutputStream dos = new DataOutputStream(baos);
 	    
 	    try {
-	        dos.writeByte(4);       // type du paquet = 4 (suppression membre)
+	        dos.writeByte(3);       // type du paquet = 4 (suppression membre)
 	        dos.writeInt(groupId);  // ID du groupe (négatif)
 	        dos.writeInt(userId);   // ID du user à supprimer
 	        byte[] data = baos.toByteArray();
@@ -290,7 +290,7 @@ public class ClientMsg {
 	    DataOutputStream dos = new DataOutputStream(baos);
 	    
 	    try {
-	        dos.writeByte(5);       // type = 5 (suppression groupe)
+	        dos.writeByte(4);       // type = 5 (suppression groupe)
 	        dos.writeInt(groupId);  // ID du groupe (négatif)
 	        byte[] data = baos.toByteArray();
 	        
