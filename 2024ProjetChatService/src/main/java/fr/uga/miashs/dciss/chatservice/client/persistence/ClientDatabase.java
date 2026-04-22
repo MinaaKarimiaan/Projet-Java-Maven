@@ -51,7 +51,9 @@ public class ClientDatabase {
                         "est_groupe BOOLEAN NOT NULL, " +
                         "contenu VARCHAR(4000) NOT NULL, " +
                         "horodatage TIMESTAMP NOT NULL, " +
-                        "direction VARCHAR(10) NOT NULL" +
+                        "direction VARCHAR(10) NOT NULL, " +
+                        "lue BOOLEAN DEFAULT FALSE, " +
+                        "date_lecture TIMESTAMP" +
                         ")");
     }
 

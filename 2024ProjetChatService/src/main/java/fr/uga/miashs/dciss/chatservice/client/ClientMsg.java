@@ -148,6 +148,13 @@ public class ClientMsg {
 			database = new ClientDatabase("target/client-history-" + identifier);
 			database.initSchema();
 			historiqueRepository = new HistoriqueRepository(database);
+			historiqueRepository.setOnMessageReadListener(msgId -> {
+				try {
+					notifyMessageReadToServer(msgId);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			});
 		}
 	}
 
@@ -223,6 +230,15 @@ public class ClientMsg {
 
 	private boolean isTechnicalPacket(int destId, byte[] data) {
 		return destId == 0; // tous les paquets vers le serveur sont techniques
+	}
+
+	private void notifyMessageReadToServer(long messageId) throws IOException {
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(bos);
+		dos.writeByte(8); // type 8: notification de lecture
+		dos.writeLong(messageId);
+		dos.flush();
+		sendPacket(0, bos.toByteArray());
 	}
 	
 	//-----------------------------------------------
