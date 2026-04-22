@@ -172,6 +172,7 @@ public class ClientMsg {
 			}
 		}
 	
+
 	/**
 	 * Start the receive loop. Has to be called only once.
 	 */
@@ -310,8 +311,12 @@ public class ClientMsg {
 	
 
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
-		ClientMsg c = new ClientMsg("localhost", 1666);
-
+		Scanner sc = new Scanner(System.in);
+		System.out.print("Entrez votre ID (0 pour nouveau client) : ");
+		int id = Integer.parseInt(sc.nextLine());
+		ClientMsg c = new ClientMsg(id, "localhost", 1666);
+		// ClientMsg c = new ClientMsg("localhost", 1666);
+		
 		// add a dummy listener that print the content of message as a string
 		c.addMessageListener(p -> System.out.println(p.srcId + " says to " + p.destId + ": " + new String(p.data)));
 		
@@ -321,10 +326,7 @@ public class ClientMsg {
 		c.startSession();
 		System.out.println("Vous êtes : " + c.getIdentifier());
 		
-		List<Integer> members = new ArrayList<>();
-		members.add(2);
-		members.add(3);
-		c.sendCreateGroup(members);
+		
 
 		// Thread.sleep(5000);
 
@@ -349,20 +351,47 @@ public class ClientMsg {
 		
 		
 
-		Scanner sc = new Scanner(System.in);
+		//Scanner sc = new Scanner(System.in);
 		String lu = null;
 		while (!"\\quit".equals(lu)) {
-			try {
-				System.out.println("A qui voulez vous écrire ? ");
-				int dest = Integer.parseInt(sc.nextLine());
+		    try {
+		        System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, ou entrez un ID pour envoyer un message");
+		        lu = sc.nextLine();
 
-				System.out.println("Votre message ? ");
-				lu = sc.nextLine();
-				c.sendPacket(dest, lu.getBytes());
-			} catch (InputMismatchException | NumberFormatException e) {
-				System.out.println("Mauvais format");
-			}
+		        if (lu.startsWith("/creategroup")) {
+		            // /creategroup nbMembres id1 id2 ...
+		        	List<Integer> members = new ArrayList<>();
+		    		members.add(2);
+		    		members.add(3);
+		        	c.sendCreateGroup(members);
 
+		        } else if (lu.startsWith("/addmember")) {
+		            // /addmember groupId userId
+		            String[] parts = lu.split(" ");
+		            c.sendAddMember(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+
+		        } else if (lu.startsWith("/removemember")) {
+		            // /removemember groupId userId
+		            String[] parts = lu.split(" ");
+		            c.sendRemoveMember(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+
+		        } else if (lu.startsWith("/deletegroup")) {
+		            // /deletegroup groupId
+		            String[] parts = lu.split(" ");
+		            c.sendRemoveGroup(Integer.parseInt(parts[1]));
+
+		        } else {
+		            // envoi message normal
+		            System.out.println("A qui voulez vous écrire ? ");
+		            int dest = Integer.parseInt(lu);
+		            System.out.println("Votre message ? ");
+		            lu = sc.nextLine();
+		            c.sendPacket(dest, lu.getBytes());
+		        }
+
+		    } catch (InputMismatchException | NumberFormatException e) {
+		        System.out.println("Mauvais format");
+		    }
 		}
 		sc.close();
 
