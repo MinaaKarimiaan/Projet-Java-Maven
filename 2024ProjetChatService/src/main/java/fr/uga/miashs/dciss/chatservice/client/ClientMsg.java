@@ -234,8 +234,8 @@ public class ClientMsg {
 	    
 	    try {
 	        dos.writeByte(2);      // type du paquet = 3 (ajout membre)
-	        dos.writeInt(userId);  // l'utilisateur à ajouter
 	        dos.writeInt(groupId);
+	        dos.writeInt(userId);  // l'utilisateur à ajouter
 	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
 	        
 	        sendPacket(0, data); // groupId est négatif
@@ -331,64 +331,76 @@ public class ClientMsg {
 		// Thread.sleep(5000);
 
 		// l'utilisateur avec id 4 crée un grp avec 1 et 3 dedans (et lui meme)
-		if (c.getIdentifier() == 4) {
-			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			DataOutputStream dos = new DataOutputStream(bos);
-
-			// byte 1 : create group on server
-			dos.writeByte(1);
-
-			// nb members
-			dos.writeInt(2);
-			// list members
-			dos.writeInt(1);
-			dos.writeInt(3);
-			dos.flush();
-
-			c.sendPacket(0, bos.toByteArray());
-
-		}
+//		if (c.getIdentifier() == 4) {
+//			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+//			DataOutputStream dos = new DataOutputStream(bos);
+//
+//			// byte 1 : create group on server
+//			dos.writeByte(1);
+//
+//			// nb members
+//			dos.writeInt(2);
+//			// list members
+//			dos.writeInt(1);
+//			dos.writeInt(3);
+//			dos.flush();
+//
+//			c.sendPacket(0, bos.toByteArray());
+//
+//		}
 		
 		
 
-		//Scanner sc = new Scanner(System.in);
 		String lu = null;
 		while (!"\\quit".equals(lu)) {
 		    try {
-		        System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, ou entrez un ID pour envoyer un message");
+		        System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, /sendfile ou entrez un ID pour envoyer un message");
 		        lu = sc.nextLine();
 
-		        if (lu.startsWith("/creategroup")) {
+		        if (lu.equalsIgnoreCase("/creategroup")) {
 		            // /creategroup nbMembres id1 id2 ...
 		        	List<Integer> members = new ArrayList<>();
 		    		members.add(2);
 		    		members.add(3);
 		        	c.sendCreateGroup(members);
 
-		        } else if (lu.startsWith("/addmember")) {
+		        } else if (lu.equalsIgnoreCase("/addmember")) {
 		            // /addmember groupId userId
-		            String[] parts = lu.split(" ");
-		            c.sendAddMember(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+		           
+		            c.sendAddMember(-1, 3);
 
-		        } else if (lu.startsWith("/removemember")) {
+		        } else if (lu.equalsIgnoreCase("/removemember")) {
 		            // /removemember groupId userId
-		            String[] parts = lu.split(" ");
-		            c.sendRemoveMember(Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+		          
+		            c.sendRemoveMember (-1, 3);
 
-		        } else if (lu.startsWith("/deletegroup")) {
+		        } else if (lu.equalsIgnoreCase("/deletegroup")) {
 		            // /deletegroup groupId
-		            String[] parts = lu.split(" ");
-		            c.sendRemoveGroup(Integer.parseInt(parts[1]));
+		            
+		            c.sendRemoveGroup(-1);
 
+		        } else if (lu.equalsIgnoreCase("/sendfile")) {
+		            System.out.println("ID du destinataire ? ");
+		            int dest = Integer.parseInt(sc.nextLine());
+		            System.out.println("Chemin du fichier ? (ex: C:/Users/sylvi/Desktop/test.txt) ");
+		            String path = sc.nextLine();
+		            File file = new File(path);
+		            if (file.exists()) {
+		                c.sendFile(dest, file);
+		                System.out.println("Fichier envoyé !");
+		            } else {
+		                System.out.println("Fichier introuvable !");
+		            }
+		            
 		        } else {
 		            // envoi message normal
 		            System.out.println("A qui voulez vous écrire ? ");
 		            int dest = Integer.parseInt(lu);
 		            System.out.println("Votre message ? ");
 		            lu = sc.nextLine();
-		            c.sendPacket(dest, lu.getBytes());
+		            c.sendPacket(dest, lu.getBytes());   
 		        }
-
+		        
 		    } catch (InputMismatchException | NumberFormatException e) {
 		        System.out.println("Mauvais format");
 		    }
