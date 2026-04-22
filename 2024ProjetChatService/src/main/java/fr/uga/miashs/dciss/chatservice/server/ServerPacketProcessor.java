@@ -107,11 +107,13 @@ public class ServerPacketProcessor implements PacketProcessor {
 	public void removeGroup(int requesterId, ByteBuffer data) {
 	    int groupId = data.getInt();
 	    GroupMsg g = server.getGroup(groupId);
+
 	    UserMsg requester = server.getUser(requesterId);
 	    if (requester == null) return;
 
 	    if (g != null) {
-	        server.removeGroup(groupId); 
+	        server.removeGroup(groupId);
+	        // Notification au demandeur
 	        String msg = "Groupe " + groupId + " supprime avec succes";
 	        requester.process(new Packet(0, requesterId, msg.getBytes()));
 	    } else {
@@ -119,8 +121,6 @@ public class ServerPacketProcessor implements PacketProcessor {
 	        requester.process(new Packet(0, requesterId, msg.getBytes()));
 	    }
 	}
-
-
 
 	}
 

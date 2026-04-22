@@ -263,6 +263,7 @@ public class ClientMsg {
 	    try {
 	        dos.writeByte(2);      // type du paquet = 3 (ajout membre)
 	        dos.writeInt(userId);  // l'utilisateur à ajouter
+	        dos.writeInt(groupId);
 	        byte[] data = baos.toByteArray();// le tableau comprend en byte(3,unserId)
 	        
 	        sendPacket(0, data); // groupId est négatif
@@ -300,16 +301,14 @@ public class ClientMsg {
 	    }
 	}
 	
-	
-	//-----------------------------------------------
+
 	//Envoi fichier
-	
 	public void sendFile(int destId, File file) throws IOException {
 	    byte[] fileBytes = Files.readAllBytes(file.toPath());
 	    byte[] nameBytes = file.getName().getBytes(StandardCharsets.UTF_8);
 
 	    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-	    DataOutputStream localDos = new DataOutputStream(bos);
+	    DataOutputStream dos = new DataOutputStream(bos);
 
 	    dos.writeByte(7);                    // type FILE_MSG
 	    dos.writeInt(nameBytes.length);      // taille du nom
@@ -321,7 +320,6 @@ public class ClientMsg {
 	    sendPacket(destId, bos.toByteArray());
 	}
 	
-	//-----------------------------------------------------
 
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		ClientMsg c = new ClientMsg("localhost", 1666);
