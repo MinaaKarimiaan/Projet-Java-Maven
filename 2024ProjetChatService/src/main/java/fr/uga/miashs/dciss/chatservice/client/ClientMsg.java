@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
+import fr.uga.miashs.dciss.chatservice.client.persistence.MessageRecord;
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 
@@ -445,6 +446,15 @@ public class ClientMsg {
 		sendPacket(0, bos.toByteArray());
 	}
 	
+	public List<MessageRecord> getHistoriqueConversation(int targetId, int limit, int offset) throws SQLException {
+	    if (historiqueRepository == null) throw new SQLException("Base de données non initialisée");
+	    return historiqueRepository.recupererHistoriqueConversation(identifier, targetId, limit, offset);
+	}
+
+	public List<MessageRecord> getHistoriqueGroupe(int groupeId, int limit, int offset) throws SQLException {
+	    if (historiqueRepository == null) throw new SQLException("Base de données non initialisée");
+	    return historiqueRepository.recupererHistoriqueGroupe(groupeId, limit, offset);
+	}
 	
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		Scanner sc = new Scanner(System.in);
@@ -458,12 +468,25 @@ public class ClientMsg {
 		});
 
 		c.startSession();
+		c.addMessageListener(p -> {
+			System.out.println("\n----------------------------------------");
+		    if (p.data.length > 0 && p.data[0] == 7) {
+		        c.receiveFile(ByteBuffer.wrap(p.data).position(1)); // skip le byte type
+		    } else if (p.data.length > 0 && p.data[0] == 8) {
+		        System.out.println("\n[Message lu par " + p.srcId + "]");
+		    } else {
+		        System.out.println("\n[" + p.srcId + "] " + new String(p.data, StandardCharsets.UTF_8));
+		    }
+		    System.out.println("----------------------------------------");
+		    System.out.println("Entrez une commande ou l'ID du destinataire :");
+		});
+		
 		System.out.println("Vous êtes : " + c.getIdentifier());
 		int avatarIndex = promptAvatarSelection(sc);
 		String nickname = promptNickname(sc, c.getIdentifier());
 		c.setProfile(nickname, avatarIndex);
 		System.out.println("Profil actif : " + c.getAvatar() + " " + c.getNickname());
-		System.out.println("Commandes : C (creategroup), A (addmember), R (removemember), D (deletegroup), S (sendfile), \\memes, \\meme <nom>, Q (quit)");
+		System.out.println("Commandes : C (creategroup), A (addmember), R (removemember), D (deletegroup), S (sendfile), H (historique), M (memes), \\meme <nom>, Q (quit)");
 		System.out.println("Astuce : tapez [nom] au debut du message pour envoyer le meme avant le texte.");
 
 		String lu = null;
@@ -472,12 +495,12 @@ public class ClientMsg {
 				System.out.println("Entrez une commande ou l'ID du destinataire :");
 				lu = sc.nextLine();
 
-				if ("\\memes".equals(lu)) {
+				if ("M".equals(lu)) {
 					System.out.println(meme.previewAll());
 					continue;
 				}
-				if (lu.startsWith("\\meme ")) {
-					String memeName = lu.substring("\\meme ".length()).trim();
+				if (lu.startsWith("M ")) {
+					String memeName = lu.substring("M ".length()).trim();
 					String preview = meme.preview(memeName);
 					if (preview == null) {
 						System.out.println("Meme inconnu : " + memeName);
@@ -510,16 +533,49 @@ public class ClientMsg {
 					} else {
 						System.out.println("Fichier introuvable !");
 					}
+				} else if (lu.equalsIgnoreCase("H")) {
+				    System.out.println("Historique avec qui ? (ID utilisateur ou groupe) ");
+				    int targetId = Integer.parseInt(sc.nextLine());
+				    System.out.println("Nombre de messages ? (ex: 20) ");
+				    int limit = Integer.parseInt(sc.nextLine());
+				    
+				    try {
+				        List<MessageRecord> historique;
+				        
+				        if (targetId < 0) {
+				            // historique d'un groupe
+				            historique = c.getHistoriqueGroupe(targetId, limit, 0);
+				        } else {
+				            // historique avec un utilisateur
+				            historique = c.getHistoriqueConversation(targetId, limit, 0);
+				        }
+				        
+				        if (historique.isEmpty()) {
+				            System.out.println("Aucun message trouvé !");
+				        } else {
+				            System.out.println("=== Historique ===");
+				            for (MessageRecord msg : historique) {
+				                System.out.println(
+				                    msg.getHorodatage() + " | " +
+				                    msg.getSrcId() + " → " +
+				                    msg.getDestId() + " : " +
+				                    msg.getContenu()
+				                );
+				            }
+				        }
+				    } catch (SQLException e) {
+				        System.out.println("Erreur base de données : " + e.getMessage());
+				    }
 				} else {
 					int dest = Integer.parseInt(lu);
 					System.out.println("Votre message ? ");
 					String message = sc.nextLine();
-					if ("\\memes".equals(message)) {
+					if ("M".equals(message)) {
 						System.out.println(meme.previewAll());
 						continue;
 					}
-					if (message.startsWith("\\meme ")) {
-						String memeName = message.substring("\\meme ".length()).trim();
+					if (message.startsWith("M ")) {
+						String memeName = message.substring("M ".length()).trim();
 						String preview = meme.preview(memeName);
 						if (preview == null) {
 							System.out.println("Meme inconnu : " + memeName);
@@ -532,7 +588,7 @@ public class ClientMsg {
 					if (outgoing != null) {
 						c.sendPacket(dest, outgoing.getBytes(StandardCharsets.UTF_8));
 					}
-				}
+				} 
 			} catch (InputMismatchException | NumberFormatException e) {
 				System.out.println("Mauvais format");
 			}
