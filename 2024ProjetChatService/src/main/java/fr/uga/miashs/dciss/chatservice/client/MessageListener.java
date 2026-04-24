@@ -11,9 +11,20 @@
 
 package fr.uga.miashs.dciss.chatservice.client;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 
 public interface MessageListener {
 
+
 	void messageReceived(Packet p);
+
+
 }

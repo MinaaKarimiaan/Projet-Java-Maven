@@ -14,6 +14,7 @@ package fr.uga.miashs.dciss.chatservice.client;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.sql.SQLException;
@@ -25,10 +26,6 @@ import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
 import fr.uga.miashs.dciss.chatservice.common.Packet;
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
-import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
-
-import java.nio.file.*;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
@@ -159,9 +156,6 @@ public class ClientMsg {
 			} catch (SQLException e) {
 				e.printStackTrace();
 				closeSession();
-			} catch (SQLException e) {
-				e.printStackTrace();
-				closeSession();
 			}
 		}
 	}
@@ -171,21 +165,13 @@ public class ClientMsg {
 			database = new ClientDatabase("target/client-history-" + identifier);
 			database.initSchema();
 			historiqueRepository = new HistoriqueRepository(database);
-			historiqueRepository.setOnMessageReadListener(msgId -> {
+			historiqueRepository.setOnMessageReadListener((destId, msgId) -> {
 				try {
-					notifyMessageReadToServer(msgId);
+					notifyMessageReadToServer(destId, msgId);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
 			});
-		}
-	}
-
-	private void initializeDatabase() throws SQLException {
-		if (database == null) {
-			database = new ClientDatabase("target/client-history-" + identifier);
-			database.initSchema();
-			historiqueRepository = new HistoriqueRepository(database);
 		}
 	}
 
@@ -218,20 +204,41 @@ public class ClientMsg {
 	}
 
 	private void receiveLoop() {
-		try {
-			while (s != null && !s.isClosed()) {
-				int sender = dis.readInt();
-				int dest = dis.readInt();
-				int length = dis.readInt();
-				byte[] data = new byte[length];
-				dis.readFully(data);
-				persistPacket(sender, dest, data, "IN");
-				notifyMessageListeners(new Packet(sender, dest, data));
-			}
-		} catch (IOException e) {
-			// error, connection closed
-		}
-		closeSession();
+	    try {
+	        while (s != null && !s.isClosed()) {
+	            // 1. Lecture du paquet depuis le réseau
+	            int sender = dis.readInt();
+	            int dest = dis.readInt();
+	            int length = dis.readInt();
+	            byte[] data = new byte[length];
+	            dis.readFully(data);
+
+	            // 2. Sauvegarde en base de données
+	            try {
+	                persistPacket(sender, dest, data, "IN");
+	            } catch (Exception e) {
+	                System.err.println("Erreur persistance (ignorée): " + e.getMessage());
+	            }
+
+	            // 3. Vérifier le type de paquet
+	            ByteBuffer buf = ByteBuffer.wrap(data);
+	            byte type = buf.get();
+
+	            if (sender == 0) {
+	                // 4a. Notification du serveur (ex: groupe créé)
+	                System.out.println("Notification serveur : " + new String(data));
+	            } else if (type == 7) {
+	                // 4b. Réception d'un fichier
+	                receiveFile(buf);
+	            } else {
+	                // 4c. Message normal texte
+	                notifyMessageListeners(new Packet(sender, dest, data));
+	            }
+	        }
+	    } catch (IOException e) {
+	        // connexion fermée
+	    }
+	    closeSession();
 	}
 
 	public void closeSession() {
@@ -396,7 +403,7 @@ public class ClientMsg {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		DataOutputStream localDos = new DataOutputStream(bos);
 
-		localDos.writeByte(MessageListener.FILE_MSG);
+		localDos.writeByte(7);
 		localDos.writeInt(nameBytes.length);
 		localDos.write(nameBytes);
 		localDos.writeInt(fileBytes.length);
@@ -405,14 +412,39 @@ public class ClientMsg {
 		sendPacket(destId, bos.toByteArray());
 	}
 
-	private void notifyMessageReadToServer(long messageId) throws IOException {
+	private void receiveFile(ByteBuffer buf) {
+	    try {
+	        // lire le nom du fichier
+	        int nameLength = buf.getInt();
+	        byte[] nameBytes = new byte[nameLength];
+	        buf.get(nameBytes);
+	        String fileName = new String(nameBytes, StandardCharsets.UTF_8);
+
+	        // lire le contenu du fichier
+	        int fileLength = buf.getInt();
+	        byte[] fileBytes = new byte[fileLength];
+	        buf.get(fileBytes);
+
+	        // sauvegarder le fichier
+	        File output = new File("received_" + fileName);
+	        Files.write(output.toPath(), fileBytes);
+	        System.out.println("OK Fichier reçu : " + fileName);
+
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+	
+	private void notifyMessageReadToServer(int destId, long messageId) throws IOException {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		DataOutputStream dos = new DataOutputStream(bos);
 		dos.writeByte(8); // type 8: notification de lecture
+		dos.writeInt(destId);
 		dos.writeLong(messageId);
 		dos.flush();
 		sendPacket(0, bos.toByteArray());
 	}
+	
 	
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		Scanner sc = new Scanner(System.in);
@@ -420,22 +452,6 @@ public class ClientMsg {
 		int id = Integer.parseInt(sc.nextLine());
 		ClientMsg c = new ClientMsg(id, "localhost", 1666);
 
-		c.addMessageListener(new MessageListener() {
-			@Override
-			public void messageReceived(Packet p) {
-				if (isFilePacket(p)) {
-					try {
-						Path saved = saveFilePacket(p);
-						System.out.println(p.srcId + " sent file to " + p.destId + ": " + saved.getFileName());
-					} catch (IOException e) {
-						System.out.println("Erreur lors de la reception du fichier: " + e.getMessage());
-					}
-					return;
-				}
-				System.out.println(
-						p.srcId + " says to " + p.destId + ": " + new String(p.data, StandardCharsets.UTF_8));
-			}
-		});
 		c.addConnectionListener(active -> {
 			if (!active)
 				System.exit(0);
@@ -447,11 +463,11 @@ public class ClientMsg {
 		String nickname = promptNickname(sc, c.getIdentifier());
 		c.setProfile(nickname, avatarIndex);
 		System.out.println("Profil actif : " + c.getAvatar() + " " + c.getNickname());
-		System.out.println("Commandes : /creategroup, /addmember, /removemember, /deletegroup, /sendfile, \\memes, \\meme <nom>, \\quit");
+		System.out.println("Commandes : C (creategroup), A (addmember), R (removemember), D (deletegroup), S (sendfile), \\memes, \\meme <nom>, Q (quit)");
 		System.out.println("Astuce : tapez [nom] au debut du message pour envoyer le meme avant le texte.");
 
 		String lu = null;
-		while (!"\\quit".equals(lu)) {
+		while (!"Q".equals(lu)) {
 			try {
 				System.out.println("Entrez une commande ou l'ID du destinataire :");
 				lu = sc.nextLine();
@@ -471,18 +487,18 @@ public class ClientMsg {
 					continue;
 				}
 
-				if (lu.equalsIgnoreCase("/creategroup")) {
+				if (lu.equalsIgnoreCase("C")) {
 					List<Integer> members = new ArrayList<>();
 					members.add(2);
 					members.add(3);
 					c.sendCreateGroup(members);
-				} else if (lu.equalsIgnoreCase("/addmember")) {
+				} else if (lu.equalsIgnoreCase("A")) {
 					c.sendAddMember(-1, 3);
-				} else if (lu.equalsIgnoreCase("/removemember")) {
+				} else if (lu.equalsIgnoreCase("R")) {
 					c.sendRemoveMember(-1, 3);
-				} else if (lu.equalsIgnoreCase("/deletegroup")) {
+				} else if (lu.equalsIgnoreCase("D")) {
 					c.sendRemoveGroup(-1);
-				} else if (lu.equalsIgnoreCase("/sendfile")) {
+				} else if (lu.equalsIgnoreCase("S")) {
 					System.out.println("ID du destinataire ? ");
 					int dest = Integer.parseInt(sc.nextLine());
 					System.out.println("Chemin du fichier ? ");
