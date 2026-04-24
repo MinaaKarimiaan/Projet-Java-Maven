@@ -11,37 +11,54 @@
 
 package fr.uga.miashs.dciss.chatservice.common;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 
 public class ExempleConnexionDB {
 
-	public static void main(String[] args) {		
-		
-		try {
-			Connection cnx = DriverManager.getConnection("jdbc:derby:target/sample;create=true");//"jdbc:sqlite:sample.db");//
-			
-			cnx.createStatement().executeUpdate("CREATE TABLE MsgUser (id INT PRIMARY KEY, nickname VARCHAR(20))");
+	private static final String URL = "jdbc:derby:target/sample;create=true";
+	private static final String CREATE_TABLE_SQL = "CREATE TABLE MsgUser (id INT PRIMARY KEY, nickname VARCHAR(20))";
+	private static final String INSERT_SQL = "INSERT INTO MsgUser VALUES (?, ?)";
+	private static final String SELECT_SQL = "SELECT id, nickname FROM MsgUser";
 
-			PreparedStatement pstmt = cnx.prepareStatement("INSERT INTO MsgUser VALUES (?,?)");
-			
-			pstmt.setInt(1, 35);
-			pstmt.setString(2, "titi");
-			
-			boolean inserted = pstmt.executeUpdate()==1;
-			
-			
-			ResultSet res = cnx.createStatement().executeQuery("SELECT * FROM MsgUser");
-			
-			while (res.next()) {
-				System.out.println(res.getInt(1)+" - "+res.getString(2));
-			}
-			
-			
-			
+	public static void main(String[] args) {
+		try (Connection cnx = DriverManager.getConnection(URL)) {
+			createTableIfNeeded(cnx);
+			insertUser(cnx, 35, "titi");
+			listUsers(cnx);
 		} catch (SQLException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
+		}
+	}
+
+	private static void createTableIfNeeded(Connection cnx) throws SQLException {
+		try (Statement statement = cnx.createStatement()) {
+			statement.executeUpdate(CREATE_TABLE_SQL);
+		} catch (SQLException e) {
+			if (!"X0Y32".equals(e.getSQLState())) {
+				throw e;
+			}
+		}
+	}
+
+	private static void insertUser(Connection cnx, int id, String nickname) throws SQLException {
+		try (PreparedStatement pstmt = cnx.prepareStatement(INSERT_SQL)) {
+			pstmt.setInt(1, id);
+			pstmt.setString(2, nickname);
+			pstmt.executeUpdate();
+		}
+	}
+
+	private static void listUsers(Connection cnx) throws SQLException {
+		try (Statement statement = cnx.createStatement(); ResultSet resultSet = statement.executeQuery(SELECT_SQL)) {
+			while (resultSet.next()) {
+				System.out.println(resultSet.getInt("id") + " - " + resultSet.getString("nickname"));
+			}
 		}
 
 	}
