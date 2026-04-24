@@ -24,6 +24,11 @@ import java.util.regex.Pattern;
 import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
 import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
 import fr.uga.miashs.dciss.chatservice.common.Packet;
+import fr.uga.miashs.dciss.chatservice.client.persistence.ClientDatabase;
+import fr.uga.miashs.dciss.chatservice.client.persistence.HistoriqueRepository;
+
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Manages the connection to a ServerMsg. Method startSession() is used to
@@ -53,6 +58,14 @@ public class ClientMsg {
 	private List<MessageListener> mListeners;
 	private List<ConnectionListener> cListeners;
 
+	/**
+	 * Create a client with an existing id, that will connect to the server at the
+	 * given address and port
+	 * 
+	 * @param id      The client id
+	 * @param address The server address or hostname
+	 * @param port    The port number
+	 */
 	public ClientMsg(int id, String address, int port) {
 		if (id < 0)
 			throw new IllegalArgumentException("id must not be less than 0");
@@ -67,10 +80,23 @@ public class ClientMsg {
 		cListeners = new ArrayList<>();
 	}
 
+	/**
+	 * Create a client without id, the server will provide an id during the the
+	 * session start
+	 * 
+	 * @param address The server address or hostname
+	 * @param port    The port number
+	 */
 	public ClientMsg(String address, int port) {
 		this(0, address, port);
 	}
 
+	/**
+	 * Register a MessageListener to the client. It will be notified each time a
+	 * message is received.
+	 * 
+	 * @param l
+	 */
 	public void addMessageListener(MessageListener l) {
 		if (l != null)
 			mListeners.add(l);
@@ -79,7 +105,12 @@ public class ClientMsg {
 	protected void notifyMessageListeners(Packet p) {
 		mListeners.forEach(x -> x.messageReceived(p));
 	}
-
+	
+	/**
+	 * Register a ConnectionListener to the client. It will be notified if the connection  start or ends.
+	 * 
+	 * @param l
+	 */
 	public void addConnectionListener(ConnectionListener l) {
 		if (l != null)
 			cListeners.add(l);
@@ -117,16 +148,36 @@ public class ClientMsg {
 				if (identifier == 0) {
 					identifier = dis.readInt();
 				}
+				// start the receive loop
 				initializeDatabase();
 				new Thread(() -> receiveLoop()).start();
 				notifyConnectionListeners(true);
 			} catch (IOException e) {
+				e.printStackTrace();
+				// error, close session
+				closeSession();
+			} catch (SQLException e) {
 				e.printStackTrace();
 				closeSession();
 			} catch (SQLException e) {
 				e.printStackTrace();
 				closeSession();
 			}
+		}
+	}
+
+	private void initializeDatabase() throws SQLException {
+		if (database == null) {
+			database = new ClientDatabase("target/client-history-" + identifier);
+			database.initSchema();
+			historiqueRepository = new HistoriqueRepository(database);
+			historiqueRepository.setOnMessageReadListener(msgId -> {
+				try {
+					notifyMessageReadToServer(msgId);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			});
 		}
 	}
 
@@ -354,6 +405,15 @@ public class ClientMsg {
 		sendPacket(destId, bos.toByteArray());
 	}
 
+	private void notifyMessageReadToServer(long messageId) throws IOException {
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		DataOutputStream dos = new DataOutputStream(bos);
+		dos.writeByte(8); // type 8: notification de lecture
+		dos.writeLong(messageId);
+		dos.flush();
+		sendPacket(0, bos.toByteArray());
+	}
+	
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		Scanner sc = new Scanner(System.in);
 		System.out.print("Entrez votre ID (0 pour nouveau client) : ");
